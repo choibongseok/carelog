@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.jest-results.json
+load/result.json
+.DS_Store

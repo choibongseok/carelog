@@ -1,0 +1,46 @@
+# 호스트 포트는 다른 로컬 서비스와 겹치지 않게 5xxxx 대역을 쓴다.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: carelog
+      POSTGRES_PASSWORD: carelog
+      POSTGRES_DB: carelog
+    ports: ["55432:5432"]
+    volumes:
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/10-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U carelog -d carelog"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  mongo:
+    image: mongo:7
+    ports: ["55017:27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    ports: ["56379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  app:
+    build: .
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      PORT: "3100"
+      DATABASE_URL: postgres://carelog:carelog@postgres:5432/carelog
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: carelog
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-only-secret-change-me
+    ports: ["53100:3100"]
