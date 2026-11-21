@@ -9,11 +9,16 @@ export async function seedDemo(db: Kysely<DB>): Promise<void> {
   const hash = hashPassword(DEMO_PASSWORD);
   await db
     .insertInto('users')
-    .values([
-      { id: 'user-1', email: 'user1@demo.test', password_hash: hash, display_name: '사용자 1' },
-      { id: 'user-2', email: 'user2@demo.test', password_hash: hash, display_name: '사용자 2' },
-      { id: 'user-3', email: 'user3@demo.test', password_hash: hash, display_name: '사용자 3', target_low: 80, target_high: 140 },
-    ])
+    .values(
+      Array.from({ length: 10 }, (_, i) => ({
+        id: `user-${i + 1}`,
+        email: `user${i + 1}@demo.test`,
+        password_hash: hash,
+        display_name: `사용자 ${i + 1}`,
+        // user-3 은 목표 범위가 좁은 사용자(요약 계산에 사용자별 설정이 쓰이는지 보여 준다)
+        ...(i === 2 ? { target_low: 80, target_high: 140 } : {}),
+      })),
+    )
     .onConflict((oc) => oc.column('id').doNothing())
     .execute();
   await db

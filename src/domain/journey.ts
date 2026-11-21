@@ -55,39 +55,40 @@ export function countPostMealChecks(meals: Date[], glucose: Date[]): number {
   }).length;
 }
 
-function weekWindow(startedOn: string, week: number): { from: Date; to: Date } {
+export function weekWindow(startedOn: string, week: number): { from: Date; to: Date } {
   return { from: dayStart(addDays(startedOn, (week - 1) * 7)), to: dayStart(addDays(startedOn, week * 7)) };
 }
 
-export function weekProgress(startedOn: string, week: number, ev: JourneyEvents): MissionProgress[] {
-  const { from, to } = weekWindow(startedOn, week);
-  const within = (d: Date) => d >= from && d < to;
-  const glucose = ev.glucose.filter(within);
-  const meals = ev.meals.filter(within);
+export interface WeekCounts {
+  glucoseLogs: number;
+  postMealChecks: number;
+  activityLogs: number;
+}
+
+/** 주차별 집계 값을 미션 진행률로 바꾼다. */
+export function progressFromCounts(week: number, c: WeekCounts): MissionProgress[] {
   const def = WEEKS.find((w) => w.week === week);
   if (!def) return [];
-  return def.missions.map((m) => {
-    const value =
-      m.key === 'glucose_logs'
-        ? glucose.length
-        : m.key === 'activity_logs'
-          ? ev.activities.filter(within).length
-          : countPostMealChecks(meals, ev.glucose);
-    return { week, mission: m.key, value, target: m.target };
-  });
+  return def.missions.map((m) => ({
+    week,
+    mission: m.key,
+    target: m.target,
+    value: m.key === 'glucose_logs' ? c.glucoseLogs : m.key === 'activity_logs' ? c.activityLogs : c.postMealChecks,
+  }));
 }
 
 /**
  * 현재 주차부터 미션 달성 여부를 보고 단계를 앞으로만 넘긴다.
  * 늦게 도착한 기록으로 다시 계산해도 이미 넘어간 단계는 되돌아가지 않는다.
+ * countsFor 는 주차별 집계를 돌려준다(메모리 배열이든 SQL 집계든 상관없다).
  */
-export function evaluateJourney(startedOn: string, currentWeek: number, ev: JourneyEvents): JourneyEvaluation {
+export async function evaluateWeeks(currentWeek: number, countsFor: (week: number) => Promise<WeekCounts>): Promise<JourneyEvaluation> {
   const progress: MissionProgress[] = [];
   const transitions: Transition[] = [];
   let week = currentWeek;
   let completed = currentWeek > WEEKS.length;
   while (!completed) {
-    const p = weekProgress(startedOn, week, ev);
+    const p = progressFromCounts(week, await countsFor(week));
     progress.push(...p);
     if (!p.every((m) => m.value >= m.target)) break;
     const next = week + 1;
@@ -100,4 +101,23 @@ export function evaluateJourney(startedOn: string, currentWeek: number, ev: Jour
     }
   }
   return { currentWeek: completed ? WEEKS.length : week, completed, progress, transitions };
+}
+
+/** 메모리에 있는 기록으로 한 주차의 집계를 계산한다. */
+export function countsFromEvents(startedOn: string, week: number, ev: JourneyEvents): WeekCounts {
+  const { from, to } = weekWindow(startedOn, week);
+  const within = (d: Date) => d >= from && d < to;
+  return {
+    glucoseLogs: ev.glucose.filter(within).length,
+    activityLogs: ev.activities.filter(within).length,
+    postMealChecks: countPostMealChecks(ev.meals.filter(within), ev.glucose),
+  };
+}
+
+export function weekProgress(startedOn: string, week: number, ev: JourneyEvents): MissionProgress[] {
+  return progressFromCounts(week, countsFromEvents(startedOn, week, ev));
+}
+
+export function evaluateJourney(startedOn: string, currentWeek: number, ev: JourneyEvents): Promise<JourneyEvaluation> {
+  return evaluateWeeks(currentWeek, async (week) => countsFromEvents(startedOn, week, ev));
 }

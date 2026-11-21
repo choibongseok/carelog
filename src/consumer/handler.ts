@@ -5,7 +5,7 @@ import { jsonLogger } from '../common/json-logger';
 import { KYSELY, REDIS } from '../db/db.module';
 import type { DB } from '../db/types';
 import { detectAlert } from '../domain/alerts';
-import { evaluateJourney, JourneyEvents, PROGRAM } from '../domain/journey';
+import { evaluateWeeks, PROGRAM, WeekCounts, weekWindow } from '../domain/journey';
 import { computeDailySummary } from '../domain/summary';
 import { addDays, dayStart, utcDay, weekStartMonday } from '../domain/time';
 import { MetricsService } from '../metrics/metrics.service';
@@ -121,20 +121,27 @@ export class DomainEventHandler {
     }
     if (j.completed_at) return;
 
-    const windowEnd = dayStart(addDays(j.started_on, 28));
-    const rows = await trx
-      .selectFrom('health_events')
-      .select(['kind', 'measured_at'])
-      .where('user_id', '=', userId)
-      .where('measured_at', '>=', dayStart(j.started_on))
-      .where('measured_at', '<', windowEnd)
-      .execute();
-    const ev: JourneyEvents = {
-      glucose: rows.filter((r) => r.kind === 'glucose').map((r) => r.measured_at),
-      meals: rows.filter((r) => r.kind === 'meal').map((r) => r.measured_at),
-      activities: rows.filter((r) => r.kind === 'activity').map((r) => r.measured_at),
+    // 주차별 집계는 SQL 로 센다. 기록 전체를 메모리로 읽지 않으므로 사용자 데이터가 쌓여도 메시지당 비용이 일정하다.
+    const countsFor = async (week: number): Promise<WeekCounts> => {
+      const { from, to } = weekWindow(j.started_on, week);
+      const c = await trx
+        .selectFrom('health_events')
+        .select([sql<number>`count(*) filter (where kind = 'glucose')::int`.as('glucose'), sql<number>`count(*) filter (where kind = 'activity')::int`.as('activity')])
+        .where('user_id', '=', userId)
+        .where('measured_at', '>=', from)
+        .where('measured_at', '<', to)
+        .executeTakeFirstOrThrow();
+      const pm = await sql<{ n: number }>`
+        select count(*)::int as n from health_events m
+        where m.user_id = ${userId} and m.kind = 'meal' and m.measured_at >= ${from} and m.measured_at < ${to}
+          and exists (
+            select 1 from health_events g
+            where g.user_id = m.user_id and g.kind = 'glucose'
+              and g.measured_at >= m.measured_at + interval '30 minutes'
+              and g.measured_at <= m.measured_at + interval '150 minutes')`.execute(trx);
+      return { glucoseLogs: c.glucose, activityLogs: c.activity, postMealChecks: pm.rows[0].n };
     };
-    const res = evaluateJourney(j.started_on, j.current_week, ev);
+    const res = await evaluateWeeks(j.current_week, countsFor);
 
     for (const p of res.progress) {
       await trx
