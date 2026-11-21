@@ -1,5 +1,13 @@
 # Carelog
 
+**라이브 데모: https://choibongseok.github.io/carelog/**
+
+![데스크톱 화면](docs/demo-desktop.png)
+
+<img src="docs/demo-mobile.png" alt="모바일 화면" width="260" />
+
+데모 사이트는 **브라우저 안에서 도는 시뮬레이션**입니다. 서버·DB·큐에 연결되어 있지 않고, 수집 멱등·순서 역전·아웃박스·큐 재시도·dead-letter·동의 기반 병의원 조회를 메모리 구현으로 흉내 냅니다. 요약·여정·알림 판정과 수집 검증은 서버의 `src/domain` 코드를 그대로 가져다 씁니다(규칙을 다시 쓰지 않았습니다). 재생·속도, 중복 재전송, 기기 오프라인 후 묶음 늦게 보내기(순서 역전), 소비자 실패 주입, 병의원 동의 켬/끔을 직접 조작해 볼 수 있습니다. 모든 데이터는 합성이며 의료 조언이 아닙니다. 소스는 `web/`(Vite + React + TypeScript)이고 `make pages` 로 정적 빌드합니다.
+
 건강 기록(혈당·식사·활동)을 받아 일일 요약·프로그램(여정) 진행·알림을 만드는 로깅 백엔드 데모입니다. NestJS(TypeScript)로 만든 모듈형 모놀리스이고, 화면 없이 백엔드 설계·테스트·관측에 집중했습니다.
 
 > 모든 데이터는 합성 데이터입니다. 의료 조언이나 진단 도구가 아니며, 요약·알림 기준은 시연용 규칙입니다.
@@ -120,11 +128,13 @@ open http://localhost:53100/docs    # Swagger UI
 
 ## 테스트
 
-총 **87건**: unit 33 · integration 51 · e2e 3. 통합·e2e 는 실제 PostgreSQL·MongoDB·Redis 를 쓰고(테스트용 DB·Redis DB·큐 이름은 개발용과 분리), e2e 는 릴레이·워커까지 띄워 수집→소비→조회를 확인합니다. 모든 행은 [docs/TEST_CASES.md](docs/TEST_CASES.md) 와 1:1 로 대응하고, `make verify` 가 행 수와 실제 테스트를 대조합니다.
+총 **107건**: unit 45(도메인 33 + 브라우저 엔진 12) · integration 51 · e2e 11(서버 흐름 3 + 브라우저 Playwright 8). 통합·e2e 는 실제 PostgreSQL·MongoDB·Redis 를 쓰고(테스트용 DB·Redis DB·큐 이름은 개발용과 분리), e2e 는 릴레이·워커까지 띄워 수집→소비→조회를 확인합니다. 모든 행은 [docs/TEST_CASES.md](docs/TEST_CASES.md) 와 1:1 로 대응하고, `make verify` 가 행 수와 실제 테스트를 대조합니다.
 
 ```bash
 make test       # unit + integration + e2e (저장소 3종을 자동으로 올림)
-make verify     # lint + 타입 검사 + 전체 테스트 + 테스트 케이스 문서 대조 + 빌드
+make test-web   # 웹 데모 브라우저 E2E(Playwright, 로컬 Chrome. 없으면 PW_CHANNEL= 로 Chromium)
+make verify     # lint + 타입 검사 + 전체 테스트 + 웹 빌드·E2E + 테스트 케이스 문서 대조 + 빌드
+make pages      # web/ 을 정적 빌드해 gh-pages 브랜치에 로컬 커밋(push 는 직접)
 npm run test:unit   # DB 없이 도메인 로직만
 ```
 

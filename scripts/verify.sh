@@ -25,6 +25,18 @@ console.log(`테스트 ${r.numPassedTests}/${r.numTotalTests} 통과, 실패 ${r
 process.exit(r.success ? 0 : 1);
 '
 
+step "web: 빌드(타입 검사 포함)"
+(cd web && npm ci --no-audit --no-fund >/dev/null && npm run --silent build 2>&1 | grep -E 'built in|error' )
+test -f web/dist/index.html && echo "web/dist/index.html 생성됨"
+
+rm -f .pw-results.json
+if [ -d "/Applications/Google Chrome.app" ] || command -v google-chrome >/dev/null 2>&1 || [ -n "${PW_CHANNEL+x}" ]; then
+  step "web: 브라우저 E2E (Playwright)"
+  (cd web && npx playwright test 2>&1 | grep -E '✓|✘|passed|failed')
+else
+  echo; echo "브라우저 E2E 건너뜀: Chrome 이 없습니다 (PW_CHANNEL= 로 Playwright Chromium 사용 가능)"
+fi
+
 step "테스트 케이스 문서 대조"
 node scripts/check-test-cases.mjs
 

@@ -1,6 +1,6 @@
 // docs/TEST_CASES.md 와 실제 Jest 결과(.jest-results.json)를 대조한다.
 // 행 수 = 실행된 테스트 수, 모든 행이 실제 통과한 테스트 하나와 1:1, 종류 열이 파일 종류와 일치.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 
 const resultsPath = process.argv[2] ?? '.jest-results.json';
@@ -17,6 +17,27 @@ for (const file of results.testResults) {
   }
 }
 
+// 브라우저 E2E(Playwright) 결과. 파일이 없으면(Chrome 없음) 소스에 해당 테스트가 있는지만 확인하고 건너뜀으로 표시한다.
+const pwPath = process.argv[3] ?? '.pw-results.json';
+let pwSkipped = false;
+const e2eSource = new Set();
+{
+  const { readdirSync } = await import('node:fs');
+  for (const f of readdirSync('web/e2e').filter((x) => x.endsWith('.spec.ts'))) {
+    for (const m of readFileSync(`web/e2e/${f}`, 'utf8').matchAll(/^test\('([^']+)'/gm)) e2eSource.add(`web/e2e/${f}::${m[1]}`);
+  }
+}
+if (existsSync(pwPath)) {
+  const walk = (suite) => {
+    for (const sp of suite.specs ?? []) actual.set(`web/e2e/${sp.file}::${sp.title}`, sp.ok ? 'passed' : 'failed');
+    for (const sub of suite.suites ?? []) walk(sub);
+  };
+  for (const s of JSON.parse(readFileSync(pwPath, 'utf8')).suites ?? []) walk(s);
+} else {
+  pwSkipped = true;
+  for (const k of e2eSource) actual.set(k, 'passed'); // 실행은 건너뜀(아래 출력에 표시)
+}
+
 const rows = doc
   .split('\n')
   .filter((l) => /^\| [A-Z0-9]+-\d{3} \|/.test(l))
@@ -25,7 +46,7 @@ const rows = doc
 const problems = [];
 const ids = new Set();
 const mapped = new Set();
-const kindOf = (f) => (f.endsWith('.e2e-spec.ts') ? 'e2e' : f.endsWith('.int-spec.ts') ? 'integration' : 'unit');
+const kindOf = (f) => (f.endsWith('.e2e-spec.ts') || f.startsWith('web/e2e/') ? 'e2e' : f.endsWith('.int-spec.ts') ? 'integration' : 'unit');
 const perKind = { unit: 0, integration: 0, e2e: 0 };
 
 for (const cells of rows) {
@@ -65,4 +86,5 @@ if (problems.length) {
   for (const p of problems.slice(0, 30)) console.error(' - ' + p);
   process.exit(1);
 }
+if (pwSkipped) console.log('주의: 브라우저 E2E 결과(.pw-results.json) 없음 -> Playwright 테스트는 실행하지 않고 소스 존재만 확인');
 console.log(`테스트 케이스 문서 대조 통과: 문서 ${rows.length}행 = 실행 ${actual.size}건 (unit ${perKind.unit}, integration ${perKind.integration}, e2e ${perKind.e2e})`);
