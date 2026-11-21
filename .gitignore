@@ -6,3 +6,8 @@ coverage/
 .jest-results.json
 load/result.json
 .DS_Store
+web/node_modules/
+web/dist/
+.pw-results.json
+web/test-results/
+web/playwright-report/
