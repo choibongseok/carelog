@@ -6,7 +6,7 @@ const base = {
 };
 module.exports = {
   projects: [
-    { ...base, displayName: 'unit', testMatch: ['<rootDir>/src/**/*.spec.ts'] },
+    { ...base, displayName: 'unit', testMatch: ['<rootDir>/src/**/*.spec.ts', '<rootDir>/web/src/**/*.spec.ts'] },
     {
       ...base,
       displayName: 'integration',
